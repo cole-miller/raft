@@ -524,6 +524,10 @@ out:
     /* Tell the log that we're done referencing these entries. */
     logRelease(&r->log, request->index, request->entries, request->n);
     if (status != 0) {
+        rv = r->io->truncate(r->io, request->index);
+        if (rv != 0) {
+            tracef("raft io truncate failed, status %d", rv);
+        }
         logTruncate(&r->log, request->index);
     }
     raft_free(request);
