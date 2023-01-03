@@ -104,13 +104,17 @@ err:
     return rv;
 }
 
+#define tracef(...) Tracef(r->tracer, __VA_ARGS__)
+
 static void ioCloseCb(struct raft_io *io)
 {
     struct raft *r = io->data;
+    tracef("io close cb");
     raft_free(r->address);
     logClose(r->log);
     raft_configuration_close(&r->configuration);
     if (r->close_cb != NULL) {
+        tracef("invoking raft close cb");
         r->close_cb(r);
     }
 }

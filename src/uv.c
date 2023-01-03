@@ -743,6 +743,7 @@ void raft_uv_close(struct raft_io *io)
 {
     struct uv *uv;
     uv = io->impl;
+    tracef("raft uv close");
     raft_free(uv);
 }
 
