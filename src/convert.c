@@ -218,6 +218,7 @@ int convertToLeader(struct raft *r)
     size_t n_voters = configurationVoterCount(&r->configuration);
     if (n_voters == 1 && (r->last_stored > r->commit_index)) {
         tracef("apply log entries after self election %llu %llu", r->last_stored, r->commit_index);
+	fprintf(stderr, "convertToLeader: commit_index: %llu -> %llu\n", r->commit_index, r->last_stored);
         r->commit_index = r->last_stored;
         rv = replicationApply(r);
     } else if (n_voters > 1) {

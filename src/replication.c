@@ -904,6 +904,7 @@ static void appendFollowerCb(struct raft_io_append *req, int status)
      *   entry).
      */
     if (args->leader_commit > r->commit_index) {
+        fprintf(stderr, "appendFollowerCb: commit_index: %llu -> %llu\n", r->commit_index, min(args->leader_commit, r->last_stored));
         r->commit_index = min(args->leader_commit, r->last_stored);
         rv = replicationApply(r);
         if (rv != 0) {
@@ -1032,6 +1033,7 @@ static int deleteConflictingEntries(struct raft *r,
             /* Drop information about previously stored entries that have just
              * been discarded. */
             if (r->last_stored >= entry_index) {
+		fprintf(stderr, "deleteConflictingEntries: last_store: %llu -> %llu\n", r->last_stored, entry_index - 1);
                 r->last_stored = entry_index - 1;
             }
 
@@ -1079,11 +1081,13 @@ int replicationAppend(struct raft *r,
         return match == 1 ? 0 : RAFT_SHUTDOWN;
     }
 
+    fprintf(stderr, "before deleteConflictingEntries: last_stored=%llu\n", r->last_stored);
     /* Delete conflicting entries. */
     rv = deleteConflictingEntries(r, args, &i);
     if (rv != 0) {
         return rv;
     }
+    fprintf(stderr, "after deleteConflictingEntries: last_stored=%llu\n", r->last_stored);
 
     *rejected = 0;
 
@@ -1103,6 +1107,7 @@ int replicationAppend(struct raft *r,
     if (n == 0) {
         if ((args->leader_commit > r->commit_index)
              && !replicationInstallSnapshotBusy(r)) {
+            fprintf(stderr, "replicationAppend: commit_index: %llu -> %llu\n", r->commit_index, min(args->leader_commit, r->last_stored));
             r->commit_index = min(args->leader_commit, r->last_stored);
             rv = replicationApply(r);
             if (rv != 0) {
@@ -1385,6 +1390,7 @@ static int applyCommand(struct raft *r,
         return rv;
     }
 
+    fprintf(stderr, "applyCommand: last_applied: %llu -> %llu\n", r->last_applied, index);
     r->last_applied = index;
 
     req = (struct raft_apply *)getRequest(r, index, RAFT_COMMAND);
@@ -1397,6 +1403,7 @@ static int applyCommand(struct raft *r,
 /* Fire the callback of a barrier request whose entry has been committed. */
 static void applyBarrier(struct raft *r, const raft_index index)
 {
+    fprintf(stderr, "applyBarrier: last_applied: %llu -> %llu\n", r->last_applied, index);
     r->last_applied = index;
 
     struct raft_barrier *req;
@@ -1422,6 +1429,7 @@ static void applyChange(struct raft *r, const raft_index index)
         r->configuration_uncommitted_index = 0;
     }
 
+    fprintf(stderr, "applyChange: last_applied: %llu -> %llu\n", r->last_applied, index);
     r->configuration_index = index;
     r->last_applied = index;
 
@@ -1652,6 +1660,9 @@ int replicationApply(struct raft *r)
     int rv = 0;
 
     assert(r->state == RAFT_LEADER || r->state == RAFT_FOLLOWER);
+    if (r->last_applied > r->commit_index) {
+        fprintf(stderr, "ERROR: last_applied=%llu commit_index=%llu\n", r->last_applied, r->commit_index);
+    }
     assert(r->last_applied <= r->commit_index);
 
     if (r->last_applied == r->commit_index) {
@@ -1737,6 +1748,7 @@ void replicationQuorum(struct raft *r, const raft_index index)
     }
 
     if (votes > configurationVoterCount(&r->configuration) / 2) {
+	fprintf(stderr, "replicationQuorum: commit_index: %llu -> %llu\n", r->commit_index, index);
         r->commit_index = index;
         tracef("new commit index %llu", r->commit_index);
     }

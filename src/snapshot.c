@@ -46,8 +46,11 @@ int snapshotRestore(struct raft *r, struct raft_snapshot *snapshot)
     r->configuration_uncommitted_index = 0;
     configurationTrace(r, &r->configuration, "configuration restore from snapshot");
 
+    fprintf(stderr, "snapshotRestore: commit_index: %llu -> %llu\n", r->commit_index, snapshot->index);
     r->commit_index = snapshot->index;
+    fprintf(stderr, "snapshotRestore: last_applied: %llu -> %llu\n", r->last_applied, snapshot->index);
     r->last_applied = snapshot->index;
+    fprintf(stderr, "snapshotRestore: last_stored: %llu -> %llu\n", r->last_stored, snapshot->index);
     r->last_stored = snapshot->index;
 
     /* Don't free the snapshot data buffer, as ownership has been transferred to
