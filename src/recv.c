@@ -52,7 +52,8 @@ static int recvMessage(struct raft *r, struct raft_message *message)
                                      &message->install_snapshot);
             /* Already installing a snapshot, wait for it and ignore this one */
             if (rv == RAFT_BUSY) {
-                raft_free(message->install_snapshot.data.base);
+                raft_free(message->install_snapshot.bufs[0].base);
+                raft_free(message->install_snapshot.bufs);
                 raft_configuration_close(&message->install_snapshot.conf);
                 rv = 0;
             }
@@ -95,7 +96,8 @@ void recvCb(struct raft_io *io, struct raft_message *message)
                 break;
             case RAFT_IO_INSTALL_SNAPSHOT:
                 raft_configuration_close(&message->install_snapshot.conf);
-                raft_free(message->install_snapshot.data.base);
+                raft_free(message->install_snapshot.bufs[0].base);
+                raft_free(message->install_snapshot.bufs);
                 break;
         }
         return;

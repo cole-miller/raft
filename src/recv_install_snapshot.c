@@ -85,7 +85,8 @@ reply:
 
     /* Free the snapshot data. */
     raft_configuration_close(&args->conf);
-    raft_free(args->data.base);
+    raft_free(args->bufs[0].base);
+    raft_free(args->bufs);
 
     message.type = RAFT_IO_APPEND_ENTRIES_RESULT;
     message.server_id = id;

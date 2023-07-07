@@ -154,6 +154,8 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
 {
     void *cursor;
     size_t conf_size = configurationEncodedSize(&p->conf);
+    uint64_t len;
+    unsigned i;
 
     cursor = buf;
 
@@ -164,7 +166,11 @@ static void encodeInstallSnapshot(const struct raft_install_snapshot *p,
     bytePut64(&cursor, conf_size);     /* Configuration length. */
     configurationEncodeToBuf(&p->conf, cursor);
     cursor = (uint8_t *)cursor + conf_size;
-    bytePut64(&cursor, p->data.len); /* Snapshot data size. */
+    len = 0;
+    for (i = 0; i < p->n_bufs; p += 1) {
+        len += p->bufs[i].len;
+    }
+    bytePut64(&cursor, len); /* Snapshot data size. */
 }
 
 static void encodeTimeoutNow(const struct raft_timeout_now *p, void *buf)
@@ -182,6 +188,7 @@ int uvEncodeMessage(const struct raft_message *message,
 {
     uv_buf_t header;
     void *cursor;
+    unsigned i;
 
     /* Figure out the length of the header for this request and allocate a
      * buffer for it. */
@@ -251,7 +258,7 @@ int uvEncodeMessage(const struct raft_message *message,
 
     /* For InstallSnapshot request we also send the snapshot payload. */
     if (message->type == RAFT_IO_INSTALL_SNAPSHOT) {
-        *n_bufs += 1;
+        *n_bufs += message->install_snapshot.n_bufs;
     }
 
     *bufs = raft_calloc(*n_bufs, sizeof **bufs);
@@ -262,7 +269,6 @@ int uvEncodeMessage(const struct raft_message *message,
     (*bufs)[0] = header;
 
     if (message->type == RAFT_IO_APPEND_ENTRIES) {
-        unsigned i;
         for (i = 0; i < message->append_entries.n_entries; i++) {
             const struct raft_entry *entry =
                 &message->append_entries.entries[i];
@@ -272,8 +278,10 @@ int uvEncodeMessage(const struct raft_message *message,
     }
 
     if (message->type == RAFT_IO_INSTALL_SNAPSHOT) {
-        (*bufs)[1].base = message->install_snapshot.data.base;
-        (*bufs)[1].len = message->install_snapshot.data.len;
+        for (i = 0; i < message->install_snapshot.n_bufs; i += 1) {
+            (*bufs)[i + 1].base = message->install_snapshot.bufs[i].base;
+            (*bufs)[i + 1].len = message->install_snapshot.bufs[i].len;
+        }
     }
 
     return 0;
@@ -473,7 +481,8 @@ static int decodeInstallSnapshot(const uv_buf_t *buf,
         return rv;
     }
     cursor = (uint8_t *)cursor + conf.len;
-    args->data.len = (size_t)byteGet64(&cursor);
+    args->bufs = raft_calloc(1, sizeof *args->bufs);
+    args->bufs[0].len = (size_t)byteGet64(&cursor);
 
     return 0;
 }
@@ -522,7 +531,7 @@ int uvDecodeMessage(uint16_t type,
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
             rv = decodeInstallSnapshot(header, &message->install_snapshot);
-            *payload_len += message->install_snapshot.data.len;
+            *payload_len += message->install_snapshot.bufs[0].len;
             break;
         case RAFT_IO_TIMEOUT_NOW:
             decodeTimeoutNow(header, &message->timeout_now);

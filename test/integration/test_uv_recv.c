@@ -96,14 +96,11 @@ static void recvCb(struct raft_io *io, struct raft_message *m1)
                 munit_assert_string_equal(s1->address, s2->address);
                 munit_assert_int(s1->role, ==, s2->role);
             }
-            munit_assert_int(m1->install_snapshot.data.len, ==,
-                             m2->install_snapshot.data.len);
-            munit_assert_int(memcmp(m1->install_snapshot.data.base,
-                                    m2->install_snapshot.data.base,
-                                    m2->install_snapshot.data.len),
-                             ==, 0);
             raft_configuration_close(&m1->install_snapshot.conf);
-            raft_free(m1->install_snapshot.data.base);
+            for (i = 0; i < m1->install_snapshot.n_bufs; i++) {
+                raft_free(m1->install_snapshot.bufs[i].base);
+            }
+            raft_free(m1->install_snapshot.bufs);
             break;
         case RAFT_IO_TIMEOUT_NOW:
             munit_assert_int(m1->timeout_now.term, ==, m2->timeout_now.term);
@@ -377,6 +374,7 @@ TEST(recv, installSnapshot, setUp, tearDown, 0, NULL)
 {
     struct fixture *f = data;
     struct raft_message message;
+    struct raft_buffer buf;
     uint8_t snapshot_data[8] = {1, 2, 3, 4, 5, 6, 7, 8};
     int rv;
 
@@ -388,8 +386,9 @@ TEST(recv, installSnapshot, setUp, tearDown, 0, NULL)
     rv = raft_configuration_add(&message.install_snapshot.conf, 1, "1",
                                 RAFT_VOTER);
     munit_assert_int(rv, ==, 0);
-    message.install_snapshot.data.len = sizeof snapshot_data;
-    message.install_snapshot.data.base = snapshot_data;
+    buf.len = sizeof snapshot_data;
+    buf.base = snapshot_data;
+    message.install_snapshot.bufs = &buf;
 
     PEER_SEND(&message);
     RECV(&message);

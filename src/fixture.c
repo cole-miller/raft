@@ -361,12 +361,19 @@ static void copyAppendEntries(const struct raft_append_entries *src,
 static void copyInstallSnapshot(const struct raft_install_snapshot *src,
                                 struct raft_install_snapshot *dst)
 {
+    unsigned i;
     int rv;
+
     rv = configurationCopy(&src->conf, &dst->conf);
     assert(rv == 0);
-    dst->data.base = raft_malloc(dst->data.len);
-    assert(dst->data.base != NULL);
-    memcpy(dst->data.base, src->data.base, src->data.len);
+    dst->bufs = raft_calloc(src->n_bufs, sizeof *src->bufs);
+    assert(dst->bufs != NULL);
+    for (i = 0; i < src->n_bufs; i += 1) {
+        dst->bufs[i].base = raft_malloc(src->bufs[i].len);
+        assert(dst->bufs[i].base != NULL);
+        memcpy(dst->bufs[i].base, src->bufs[i].base, src->bufs[i].len);
+        dst->bufs[i].len = src->bufs[i].len;
+    }
 }
 
 /* Flush a raft_io_send request, copying the message content into a new struct
@@ -424,6 +431,8 @@ out:
 static void ioDestroyTransmit(struct transmit *transmit)
 {
     struct raft_message *message;
+    unsigned i;
+
     message = &transmit->message;
     switch (message->type) {
         case RAFT_IO_APPEND_ENTRIES:
@@ -434,7 +443,10 @@ static void ioDestroyTransmit(struct transmit *transmit)
             break;
         case RAFT_IO_INSTALL_SNAPSHOT:
             raft_configuration_close(&message->install_snapshot.conf);
-            raft_free(message->install_snapshot.data.base);
+            for (i = 0; i < message->install_snapshot.n_bufs; i += 1) {
+                raft_free(message->install_snapshot.bufs[i].base);
+            }
+            raft_free(message->install_snapshot.bufs);
             break;
     }
     raft_free(transmit);

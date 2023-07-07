@@ -208,8 +208,6 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
         goto abort_with_snapshot;
     }
 
-    assert(snapshot->n_bufs == 1);
-
     message.type = RAFT_IO_INSTALL_SNAPSHOT;
     message.server_id = server->id;
     message.server_address = server->address;
@@ -219,7 +217,8 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
     args->last_term = snapshot->term;
     args->conf_index = snapshot->configuration_index;
     args->conf = snapshot->configuration;
-    args->data = snapshot->bufs[0];
+    args->bufs = snapshot->bufs;
+    args->n_bufs = snapshot->n_bufs;
 
     req->snapshot = snapshot;
     req->send.data = req;
@@ -1343,12 +1342,13 @@ int replicationInstallSnapshot(struct raft *r,
     snapshot->configuration_index = args->conf_index;
     snapshot->configuration = args->conf;
 
+    assert(snapshot->n_bufs == 1);
     snapshot->bufs = raft_malloc(sizeof *snapshot->bufs);
     if (snapshot->bufs == NULL) {
         rv = RAFT_NOMEM;
         goto err_after_request_alloc;
     }
-    snapshot->bufs[0] = args->data;
+    snapshot->bufs[0] = args->bufs[0];
     snapshot->n_bufs = 1;
 
     assert(r->snapshot.put.data == NULL);

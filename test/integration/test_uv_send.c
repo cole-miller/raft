@@ -227,13 +227,15 @@ TEST(send, installSnapshot, setUp, tearDown, 0, NULL)
     rv = raft_configuration_add(&p->conf, 1, "1", RAFT_VOTER);
     munit_assert_int(rv, ==, 0);
 
-    p->data.len = 8;
-    p->data.base = raft_malloc(p->data.len);
+    p->bufs = raft_malloc(sizeof *p->bufs);
+    p->bufs[0].len = 8;
+    p->bufs[0].base = raft_malloc(8);
 
     SEND(0);
 
     raft_configuration_close(&p->conf);
-    raft_free(p->data.base);
+    raft_free(p->bufs[0].base);
+    raft_free(p->bufs);
 
     return MUNIT_OK;
 }

@@ -284,9 +284,10 @@ struct raft_install_snapshot
     raft_term last_term;            /* Term of last_index. */
     struct raft_configuration conf; /* Config as of last_index. */
     raft_index conf_index;          /* Commit index of conf. */
-    struct raft_buffer data;        /* Raw snapshot data. */
+    struct raft_buffer *bufs;       /* Raw snapshot data. */
+    unsigned n_bufs;
 };
-#define RAFT_INSTALL_SNAPSHOT_VERSION 0
+#define RAFT_INSTALL_SNAPSHOT_VERSION 1
 
 /**
  * Hold the arguments of a TimeoutNow RPC.
