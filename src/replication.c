@@ -246,6 +246,63 @@ out:
     return;
 }
 
+/* This is a shim between raft_io's snapshot_get and raft_fsm's post_snapshot_get. */
+static void sendSnapshotGetPostCb(struct raft_io_snapshot_get *get,
+                                  struct raft_snapshot *snapshot,
+                                  int status)
+{
+    struct sendInstallSnapshot *req = get->data;
+    struct raft *r = req->raft;
+    const struct raft_server *server = NULL;
+    bool progress_state_is_snapshot = false;
+    unsigned i = 0;
+    int rv;
+
+    /* Still need to see if anything went wrong while getting the fake snapshot. */
+    if (status != 0) {
+        tracef("get snapshot %s", raft_strerror(status));
+        goto abort;
+    }
+    if (r->state != RAFT_LEADER) {
+        goto abort_with_snapshot;
+    }
+
+    server = configurationGet(&r->configuration, req->server_id);
+
+    if (server == NULL) {
+        /* Probably the server was removed in the meantime. */
+        goto abort_with_snapshot;
+    }
+
+    i = configurationIndexOf(&r->configuration, req->server_id);
+    progress_state_is_snapshot = progressState(r, i) == PROGRESS__SNAPSHOT;
+
+    if (!progress_state_is_snapshot) {
+        /* Something happened in the meantime. */
+        goto abort_with_snapshot;
+    }
+
+    /* Move on to the postprocessing step. */
+    rv = r->fsm->post_snapshot_get(r->fsm, get, snapshot, sendSnapshotGetCb);
+    if (rv != 0) {
+        goto abort_with_snapshot;
+    }
+
+    goto out;
+
+abort_with_snapshot:
+    snapshotClose(snapshot);
+    raft_free(snapshot);
+abort:
+    if (r->state == RAFT_LEADER && server != NULL &&
+        progress_state_is_snapshot) {
+	progressAbortSnapshot(r, i);
+    }
+    raft_free(req);
+out:
+    return;
+}
+
 /* Send the latest snapshot to the i'th server */
 static int sendSnapshot(struct raft *r, const unsigned i)
 {
@@ -267,7 +324,11 @@ static int sendSnapshot(struct raft *r, const unsigned i)
     /* TODO: make sure that the I/O implementation really returns the latest
      * snapshot *at this time* and not any snapshot that might be stored at a
      * later point. Otherwise the progress snapshot_index would be wrong. */
-    rv = r->io->snapshot_get(r->io, &request->get, sendSnapshotGetCb);
+    if (r->fsm->version >= 4 && r->fsm->post_snapshot_get != NULL) {
+        rv = r->io->snapshot_get(r->io, &request->get, sendSnapshotGetPostCb);
+    } else {
+        rv = r->io->snapshot_get(r->io, &request->get, sendSnapshotGetCb);
+    }
     if (rv != 0) {
         goto err_after_req_alloc;
     }
@@ -1353,9 +1414,13 @@ int replicationInstallSnapshot(struct raft *r,
 
     assert(r->snapshot.put.data == NULL);
     r->snapshot.put.data = request;
-    rv = r->io->snapshot_put(r->io,
-                             0 /* zero trailing means replace everything */,
-                             &r->snapshot.put, snapshot, installSnapshotCb);
+    if (r->fsm->version >= 4 && r->fsm->pre_snapshot_put != NULL) {
+        rv = r->fsm->pre_snapshot_put(r->fsm, r->io, &r->snapshot.put, snapshot, installSnapshotCb);
+    } else {
+        rv = r->io->snapshot_put(r->io,
+                                 0 /* zero trailing means replace everything */,
+                                 &r->snapshot.put, snapshot, installSnapshotCb);
+    }
     if (rv != 0) {
         tracef("snapshot_put failed %d", rv);
         goto err_after_bufs_alloc;

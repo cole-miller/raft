@@ -584,6 +584,16 @@ struct raft_fsm
     int (*snapshot_async)(struct raft_fsm *fsm,
                           struct raft_buffer *bufs[],
                           unsigned *n_bufs);
+    /* Fields below added since version 4. */
+    int (*pre_snapshot_put)(struct raft_fsm *fsm,
+                            struct raft_io *io,
+                            struct raft_io_snapshot_put *req,
+                            struct raft_snapshot *snapshot,
+                            raft_io_snapshot_put_cb cb);
+    int (*post_snapshot_get)(struct raft_fsm *fsm,
+                             struct raft_io_snapshot_get *get,
+                             struct raft_snapshot *snapshot,
+                             raft_io_snapshot_get_cb cb);
 };
 
 /**
