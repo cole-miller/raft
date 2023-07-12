@@ -594,6 +594,8 @@ struct raft_fsm
                              struct raft_io_snapshot_get *get,
                              struct raft_snapshot *snapshot,
                              raft_io_snapshot_get_cb cb);
+    int (*post_snapshot_get_finalize)(struct raft_fsm *fsm,
+                                      struct raft_snapshot *snapshot);
 };
 
 /**

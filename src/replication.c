@@ -139,6 +139,15 @@ err:
     return rv;
 }
 
+static void closeSnapshotFromGet(struct raft_snapshot *snapshot, struct raft_fsm *fsm)
+{
+    if (fsm->version >= 4 && fsm->post_snapshot_get_finalize != NULL) {
+        fsm->post_snapshot_get_finalize(fsm, snapshot);
+        return;
+    }
+    snapshotClose(snapshot);
+}
+
 /* Context of a RAFT_IO_INSTALL_SNAPSHOT request that was submitted with
  * raft_io_>send(). */
 struct sendInstallSnapshot
@@ -167,7 +176,7 @@ static void sendInstallSnapshotCb(struct raft_io_send *send, int status)
         }
     }
 
-    snapshotClose(req->snapshot);
+    closeSnapshotFromGet(req->snapshot, r->fsm);
     raft_free(req->snapshot);
     raft_free(req);
 }
@@ -234,7 +243,7 @@ static void sendSnapshotGetCb(struct raft_io_snapshot_get *get,
     goto out;
 
 abort_with_snapshot:
-    snapshotClose(snapshot);
+    closeSnapshotFromGet(snapshot, r->fsm);
     raft_free(snapshot);
 abort:
     if (r->state == RAFT_LEADER && server != NULL &&
@@ -291,7 +300,7 @@ static void sendSnapshotGetPostCb(struct raft_io_snapshot_get *get,
     goto out;
 
 abort_with_snapshot:
-    snapshotClose(snapshot);
+    closeSnapshotFromGet(snapshot, r->fsm);
     raft_free(snapshot);
 abort:
     if (r->state == RAFT_LEADER && server != NULL &&
