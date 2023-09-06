@@ -75,7 +75,7 @@ raft_index logLastIndex(struct raft_log *l);
 /* Get the term of the last entry in the log. Return #0 if the log is empty. */
 raft_term logLastTerm(struct raft_log *l);
 
-/* Get the term of the entry with the given index. Return #0 if @index is *
+/* Get the term of the entry with the given index. Return #0 if @index is
  * greater than the last index of the log, or if it's lower than oldest index we
  * know the term of (either because it's outstanding or because it's the last
  * entry in the most recent snapshot). */
@@ -85,9 +85,11 @@ raft_term logTermOf(struct raft_log *l, raft_index index);
  * there are no snapshots. */
 raft_index logSnapshotIndex(struct raft_log *l);
 
-/* Get the entry with the given index. * The returned pointer remains valid only
- * as long as no API that might delete the entry with the given index is
- * invoked. Return #NULL if there is no such entry. */
+/* Get the entry with the given index.
+ *
+ * The returned pointer remains valid only as long as no API that might delete
+ * the entry with the given index is invoked. Return #NULL if there is no such
+ * entry. */
 const struct raft_entry *logGet(struct raft_log *l, const raft_index index);
 
 /* Append a new entry to the log. */
@@ -108,9 +110,10 @@ int logAppendConfiguration(struct raft_log *l,
                            const raft_term term,
                            const struct raft_configuration *configuration);
 
-/* Acquire an array of entries from the given index onwards. * The payload
- * memory referenced by the @buf attribute of the returned entries is guaranteed
- * to be valid until logRelease() is called. */
+/* Acquire an array of entries from the given index onwards.
+ *
+ * The payload memory referenced by the @buf attribute of the returned entries
+ * is guaranteed to be valid until logRelease() is called. */
 int logAcquire(struct raft_log *l,
                raft_index index,
                struct raft_entry *entries[],

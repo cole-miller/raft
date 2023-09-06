@@ -6,6 +6,27 @@
 #include "assert.h"
 #include "configuration.h"
 
+#include <stdio.h>
+
+static void logTrace(struct raft_log *l)
+{
+    size_t i;
+    fprintf(stderr, "=== raft_log ===\n");
+    for (i = 0; i < l->refs_size; i++) {
+        struct raft_entry_ref *bucket = &l->refs[i];
+        if (bucket->count > 0) {
+            do {
+                fprintf(stderr, "[term=%llu, index=%llu] => refcount=%hu\n", bucket->term, bucket->index, bucket->count);
+                bucket = bucket->next;
+            } while (bucket != NULL);
+        } else {
+            /* If the count is zero, we expect that the bucket is unused. */
+            assert(bucket->next == NULL);
+        }
+    }
+    fprintf(stderr, "=== end ===\n");
+}
+
 /* Calculate the reference count hash table key for the given log entry index in
  * an hash table of the given size.
  *
@@ -43,6 +64,8 @@ static int refsTryInsert(struct raft_entry_ref *table,
     struct raft_entry_ref *last_slot; /* To track the last traversed slot. */
     struct raft_entry_ref *slot;      /* Actual slot to use for this entry. */
     size_t key;
+
+    fprintf(stderr, "refsTryInsert(term=%llu, index=%llu, count=%hu)\n", term, index, count);
 
     assert(table != NULL);
     assert(size > 0);
@@ -84,6 +107,7 @@ static int refsTryInsert(struct raft_entry_ref *table,
         /* It should never happen that two entries with the same index and term
          * get appended. So no existing slot in this bucket must track an entry
          * with the same term as the given one. */
+        fprintf(stderr, "comparing next_slot->term=%llu with term=%llu\n", next_slot->term, term);
         assert(next_slot->term != term);
 
         last_slot = next_slot;
@@ -490,6 +514,9 @@ int logAppend(struct raft_log *l,
     struct raft_entry *entry;
     raft_index index;
 
+    fprintf(stderr, "logAppend\n");
+    logTrace(l);
+
     assert(l != NULL);
     assert(term > 0);
     assert(type == RAFT_CHANGE || type == RAFT_BARRIER || type == RAFT_COMMAND);
@@ -497,14 +524,14 @@ int logAppend(struct raft_log *l,
 
     rv = ensureCapacity(l);
     if (rv != 0) {
-        return rv;
+        goto out;
     }
 
     index = logLastIndex(l) + 1;
 
     rv = refsInit(l, term, index);
     if (rv != 0) {
-        return rv;
+        goto out;
     }
 
     entry = &l->entries[l->back];
@@ -516,7 +543,12 @@ int logAppend(struct raft_log *l,
     l->back += 1;
     l->back = l->back % l->size;
 
-    return 0;
+    rv = 0;
+
+out:
+    fprintf(stderr, "after logAppend (rv = %d)\n", rv);
+    logTrace(l);
+    return rv;
 }
 
 int logAppendCommands(struct raft_log *l,
@@ -680,6 +712,10 @@ int logAcquire(struct raft_log *l,
 {
     size_t i;
     size_t j;
+    int rv;
+
+    fprintf(stderr, "logAcquire(index=%llu)\n", index);
+    logTrace(l);
 
     assert(l != NULL);
     assert(index > 0);
@@ -692,7 +728,8 @@ int logAcquire(struct raft_log *l,
     if (i == l->size) {
         *n = 0;
         *entries = NULL;
-        return 0;
+        rv = 0;
+        goto out;
     }
 
     if (i < l->back) {
@@ -710,7 +747,8 @@ int logAcquire(struct raft_log *l,
 
     *entries = raft_calloc(*n, sizeof **entries);
     if (*entries == NULL) {
-        return RAFT_NOMEM;
+        rv = RAFT_NOMEM;
+        goto out;
     }
 
     for (j = 0; j < *n; j++) {
@@ -719,8 +757,12 @@ int logAcquire(struct raft_log *l,
         *entry = l->entries[k];
         refsIncr(l, entry->term, index + j);
     }
+    rv = 0;
 
-    return 0;
+out:
+    fprintf(stderr, "after logAcquire (rv = %d)\n", rv);
+    logTrace(l);
+    return rv;
 }
 
 /* Return true if the given batch is referenced by any entry currently in the
@@ -749,6 +791,9 @@ void logRelease(struct raft_log *l,
 {
     size_t i;
     void *batch = NULL; /* Last batch whose memory was freed */
+
+    fprintf(stderr, "logRelease(index=%llu)\n", index);
+    logTrace(l);
 
     assert(l != NULL);
     assert((entries == NULL && n == 0) || (entries != NULL && n > 0));
@@ -781,6 +826,9 @@ void logRelease(struct raft_log *l,
     if (entries != NULL) {
         raft_free(entries);
     }
+
+    fprintf(stderr, "after logRelease\n");
+    logTrace(l);
 }
 
 /* Clear the log if it became empty. */
@@ -850,15 +898,23 @@ static void removeSuffix(struct raft_log *l,
 
 void logTruncate(struct raft_log *l, const raft_index index)
 {
+    fprintf(stderr, "logTruncate(index=%llu)\n", index);
+    logTrace(l);
     if (logNumEntries(l) == 0) {
         return;
     }
     removeSuffix(l, index, true);
+    fprintf(stderr, "after logTruncate\n");
+    logTrace(l);
 }
 
 void logDiscard(struct raft_log *l, const raft_index index)
 {
+    fprintf(stderr, "logDiscard(index=%llu)\n", index);
+    logTrace(l);
     removeSuffix(l, index, false);
+    fprintf(stderr, "after logDiscard\n");
+    logTrace(l);
 }
 
 /* Delete all entries up to the given index (included). */
