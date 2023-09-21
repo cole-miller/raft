@@ -16,7 +16,7 @@ static void logTrace(struct raft_log *l)
         struct raft_entry_ref *bucket = &l->refs[i];
         if (bucket->count > 0) {
             do {
-                fprintf(stderr, "[term=%llu, index=%llu] => refcount=%hu\n", bucket->term, bucket->index, bucket->count);
+                fprintf(stderr, "[slot=%zu, term=%llu, index=%llu] => refcount=%hu\n", i, bucket->term, bucket->index, bucket->count);
                 bucket = bucket->next;
             } while (bucket != NULL);
         } else {
@@ -315,6 +315,8 @@ static bool refsDecr(struct raft_log *l,
     struct raft_entry_ref *slot;      /* Slot for the given term/index */
     struct raft_entry_ref *prev_slot; /* Slot preceeding the one to decrement */
 
+    fprintf(stderr, "refsDecr(term=%llu, index=%llu)\n", term, index);
+
     assert(l != NULL);
     assert(term > 0);
     assert(index > 0);
@@ -335,6 +337,7 @@ static bool refsDecr(struct raft_log *l,
         slot = slot->next;
     }
 
+    fprintf(stderr, "decrement(slot=%zu, old=%u, new=%u)\n", key, slot->count, slot->count - 1);
     slot->count--;
 
     if (slot->count > 0) {
